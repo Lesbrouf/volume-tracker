@@ -1,0 +1,35 @@
+# Python Caches
+__pycache__/
+*.py[cod]
+*$py.class
+backend/backend_cache/
+backend/tsx_tickers_cache.json
+tsx_tickers_cache.json
+backend_cache/
+
+# Node.js
+node_modules/
+frontend/node_modules/
+
+# Logs
+*.log
+backend.log
+frontend.log
+worker_debug.txt
+backend/worker_debug.txt
+
+# Scan Data & Results
+scan_status.json
+backend/scan_status.json
+scan_config.json
+backend/scan_config.json
+scan_results.csv
+*.tmp
+
+# IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

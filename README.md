@@ -1,8 +1,9 @@
-# Volume Tracker 
+# Volume Tracker Pro 🚀
 
-Volume Tracker is a powerful, high-performance stock scanner designed to identify institutional accumulation and massive volume anomalies across global markets.
+Volume Tracker Pro is a powerful, high-performance stock scanner designed to identify institutional accumulation and massive volume anomalies across global markets.
 
-![Volume Tracker Interface](title.png)
+![Dashboard Overview](screenshot1.jpg)
+![Pattern Guide](screenshot2.jpg)
 
 ## 🌟 Key Features
 

@@ -123,7 +123,7 @@ def get_canadian_tickers():
         # Fallback to a small hardcoded list or empty if script fails
         return ['SHOP.TO', 'RY.TO', 'TD.TO', 'CNR.TO', 'CP.TO']
 
-def process_ticker(ticker, config):
+def process_ticker(ticker, market, config):
     try:
         # PURE BLOCKING DOWNLOAD (Safe in ThreadPool)
         df = yf.download(ticker, period="3y", interval="1wk", progress=False, threads=False)
@@ -240,7 +240,9 @@ def process_ticker(ticker, config):
                 "market_cap": cap_str,
                 "insider_own": f"{insider_pct*100:.1f}%",
                 "market_cap_raw": mkt_cap_usd,
-                "insider_own_raw": insider_pct
+                "insider_own_raw": insider_pct,
+                "market": market,
+                "checked": False
             }
         return None
     except Exception as e:
@@ -254,44 +256,69 @@ if __name__ == "__main__":
     except:
         config = {'vol_cutoff': 1.8, 'cap_cutoff': 1000000000, 'max_insider': 0.5}
 
-    tickers = []
-    if config.get('use_us_market', True): tickers.extend(get_us_tickers())
-    if config['use_ca_market']:
-        debug_log("Fetching Canadian tickers...")
-        tickers.extend(get_canadian_tickers())
-
-    # Global Markets
     import global_tickers
-    
+
+    # Build market map first, then create status
+    completed = 0
+    market_map = {}
+    all_tickers_flat = []
+
+    if config.get('use_us_market', True):
+        debug_log("Fetching US tickers...")
+        us = get_us_tickers()
+        all_tickers_flat.extend(us)
+        for t in us: market_map[t] = "US"
+
+    if config.get('use_ca_market', False):
+        debug_log("Fetching Canadian tickers...")
+        ca = get_canadian_tickers()
+        all_tickers_flat.extend(ca)
+        for t in ca: market_map[t] = "Canada"
+
     if config.get('use_euronext', False):
         debug_log("Fetching Euronext tickers...")
-        tickers.extend(global_tickers.get_cached_or_fetch('euronext', global_tickers.fetch_euronext))
-        
+        eu = global_tickers.get_cached_or_fetch('euronext', global_tickers.fetch_euronext)
+        all_tickers_flat.extend(eu)
+        for t in eu: market_map[t] = "Euronext"
+
     if config.get('use_jpx', False):
         debug_log("Fetching Japan (JPX) tickers...")
-        tickers.extend(global_tickers.get_cached_or_fetch('jpx', global_tickers.fetch_jpx))
-        
+        jp = global_tickers.get_cached_or_fetch('jpx', global_tickers.fetch_jpx)
+        all_tickers_flat.extend(jp)
+        for t in jp: market_map[t] = "Japan"
+
     if config.get('use_lse', False):
         debug_log("Fetching London (LSE) tickers...")
-        tickers.extend(global_tickers.get_cached_or_fetch('lse', global_tickers.fetch_lse_wiki))
+        gb = global_tickers.get_cached_or_fetch('lse', global_tickers.fetch_lse_wiki)
+        all_tickers_flat.extend(gb)
+        for t in gb: market_map[t] = "London"
 
     if config.get('use_hkex', False):
         debug_log("Fetching Hong Kong (HKEX) tickers...")
-        tickers.extend(global_tickers.get_cached_or_fetch('hkex', global_tickers.fetch_hkex_wiki))
+        hk = global_tickers.get_cached_or_fetch('hkex', global_tickers.fetch_hkex_wiki)
+        all_tickers_flat.extend(hk)
+        for t in hk: market_map[t] = "Hong Kong"
 
     if config.get('use_china', False):
         debug_log("Fetching China (SSE/SZSE) tickers...")
-        tickers.extend(global_tickers.get_cached_or_fetch('china', global_tickers.fetch_china_mojing))
+        cn = global_tickers.get_cached_or_fetch('china', global_tickers.fetch_china_mojing)
+        all_tickers_flat.extend(cn)
+        for t in cn: market_map[t] = "China"
 
     if config.get('use_krx', False):
         debug_log("Fetching Korea (KRX) tickers...")
-        tickers.extend(global_tickers.get_cached_or_fetch('krx', global_tickers.fetch_korea_finance_data))
-        
-    if config.get('custom_tickers', []): 
-        tickers.extend([t.strip().upper() for t in config.get('custom_tickers', []) if t.strip()])
-    
-    tickers = sorted(list(set(tickers)))
-    
+        kr = global_tickers.get_cached_or_fetch('krx', global_tickers.fetch_korea_finance_data)
+        all_tickers_flat.extend(kr)
+        for t in kr: market_map[t] = "Korea"
+
+    if config.get('custom_tickers', []):
+        ct = [t.strip().upper() for t in config.get('custom_tickers', []) if t.strip()]
+        all_tickers_flat.extend(ct)
+        for t in ct: market_map[t] = "Custom"
+
+    # Unique and sorted list
+    tickers = sorted(list(set(all_tickers_flat)))
+
     status = {
         "is_running": True,
         "progress": 0,
@@ -303,9 +330,8 @@ if __name__ == "__main__":
     update_status(status)
     debug_log(f"Starting Scan for {len(tickers)} tickers. Config: {config}")
 
-    completed = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_ticker = {executor.submit(process_ticker, t, config): t for t in tickers}
+        future_to_ticker = {executor.submit(process_ticker, t, market_map.get(t, "Unknown"), config): t for t in tickers}
         
         for future in concurrent.futures.as_completed(future_to_ticker):
             ticker_name = future_to_ticker[future]

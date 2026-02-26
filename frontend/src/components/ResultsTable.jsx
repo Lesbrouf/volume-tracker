@@ -2,13 +2,36 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Upload, ChevronUp, ChevronDown } from 'lucide-react';
 
-const ResultsTable = ({ results, onImport }) => {
+const ResultsTable = ({ results, onImport, onToggleChecked }) => {
     const { t } = useTranslation();
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'descending' });
     const fileInputRef = useRef(null);
 
     const handleExport = () => {
-        window.location.href = "http://localhost:8000/api/export";
+        const headers = ["Ticker", "Pattern", "Volume Ratio", "Drop %", "Market Cap", "Insider Own %", "Market", "Checked"];
+        const csvRows = [headers.join(",")];
+
+        for (const r of results) {
+            csvRows.push([
+                r.ticker,
+                r.pattern,
+                r.volume_ratio,
+                r.drop_pct,
+                r.market_cap,
+                r.insider_own,
+                r.market || "Unknown",
+                r.checked || false
+            ].join(","));
+        }
+
+        const csvContent = csvRows.join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "scan_results.csv";
+        link.click();
+        URL.revokeObjectURL(url);
     };
 
     const handleImportClick = () => {
@@ -31,10 +54,7 @@ const ResultsTable = ({ results, onImport }) => {
                 const dataLines = lines.slice(1).filter(line => line.trim() !== '');
 
                 const parsedResults = dataLines.map(line => {
-                    // Split by comma, handling quotes if necessary (simple split for now as our data is simple)
-                    // "Ticker", "Pattern", "Volume Ratio", "Drop %", "Market Cap", "Insider Own %"
                     const cols = line.split(',').map(c => c.trim());
-
                     if (cols.length < 6) return null;
 
                     const ticker = cols[0];
@@ -43,6 +63,8 @@ const ResultsTable = ({ results, onImport }) => {
                     const drop_pct = parseFloat(cols[3]);
                     const market_cap = cols[4];
                     const insider_own = cols[5];
+                    const market = cols[6] || "Unknown";
+                    const checked = cols[7] === "true" || cols[7] === "Checked";
 
                     // Reconstruct raw values for sorting
                     let market_cap_raw = 0;
@@ -52,11 +74,6 @@ const ResultsTable = ({ results, onImport }) => {
                         market_cap_raw = parseFloat(market_cap.replace('$', '').replace('M', '')) * 1_000_000;
                     }
 
-                    let insider_own_raw = 0;
-                    if (insider_own.endsWith('%')) {
-                        insider_own_raw = parseFloat(insider_own.replace('%', '')) / 100;
-                    }
-
                     return {
                         ticker,
                         pattern,
@@ -64,8 +81,10 @@ const ResultsTable = ({ results, onImport }) => {
                         drop_pct,
                         market_cap,
                         insider_own,
+                        market,
+                        checked,
                         market_cap_raw,
-                        insider_own_raw
+                        insider_own_raw: insider_own.endsWith('%') ? parseFloat(insider_own.replace('%', '')) / 100 : 0
                     };
                 }).filter(r => r !== null);
 
@@ -158,10 +177,10 @@ const ResultsTable = ({ results, onImport }) => {
 
     const HeaderCell = ({ label, sortKey, align = "left" }) => (
         <th
-            className={`py-3 px-2 font-semibold cursor-pointer hover:bg-gray-800 transition-colors select-none whitespace-nowrap ${align === "right" ? "text-right" : "text-left"}`}
+            className={`py-3 px-1 font-semibold cursor-pointer hover:bg-gray-800 transition-colors select-none whitespace-nowrap ${align === "right" ? "text-right" : "text-left"}`}
             onClick={() => requestSort(sortKey)}
         >
-            <div className={`flex items-center gap-2 ${align === "right" ? "justify-end" : "justify-start"}`}>
+            <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : "justify-start"}`}>
                 {label}
                 <span className="text-gray-500">{renderSortIcon(sortKey)}</span>
             </div>
@@ -202,8 +221,14 @@ const ResultsTable = ({ results, onImport }) => {
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="bg-gray-900/50 text-gray-400 text-sm uppercase tracking-wider">
+                        <tr className="bg-gray-900/50 text-gray-400 text-xs uppercase tracking-wider">
+                            <th className="py-3 px-1 w-8">
+                                <div className="flex items-center justify-center">
+                                    <span className="text-[10px] text-gray-500 uppercase">{t('table_checked')}</span>
+                                </div>
+                            </th>
                             <HeaderCell label={t('table_ticker')} sortKey="ticker" />
+                            <HeaderCell label={t('table_market')} sortKey="market" />
                             <HeaderCell label={t('table_pattern')} sortKey="pattern" />
                             <HeaderCell label={t('table_volume_ratio')} sortKey="volume_ratio" align="right" />
                             <HeaderCell label={t('table_drop_pct')} sortKey="drop_pct" align="right" />
@@ -213,8 +238,16 @@ const ResultsTable = ({ results, onImport }) => {
                     </thead>
                     <tbody className="divide-y divide-gray-700">
                         {sortedResults.map((r, i) => (
-                            <tr key={i} className="hover:bg-gray-700/50 transition-colors group">
-                                <td className="py-3 px-2 font-bold text-white">
+                            <tr key={`${r.ticker}-${i}`} className={`hover:bg-gray-700/50 transition-colors group ${r.checked ? 'opacity-40' : ''}`}>
+                                <td className="py-3 px-1 text-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={r.checked || false}
+                                        onChange={(e) => onToggleChecked && onToggleChecked(r.ticker, e.target.checked)}
+                                        className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-offset-gray-900 cursor-pointer"
+                                    />
+                                </td>
+                                <td className="py-3 px-1 font-bold text-white text-sm">
                                     <a
                                         href={`https://finance.yahoo.com/quote/${r.ticker}`}
                                         target="_blank"
@@ -224,18 +257,23 @@ const ResultsTable = ({ results, onImport }) => {
                                         {r.ticker}
                                     </a>
                                 </td>
-                                <td className="py-3 px-2">
-                                    <span className={`px-2 py-1 rounded text-xs font-bold whitespace-nowrap ${r.pattern.includes("FRESH")
+                                <td className="py-3 px-1 text-xs text-gray-400">
+                                    <span className="bg-gray-900/50 px-1 py-0.5 rounded border border-gray-700/50">
+                                        {r.market || "US"}
+                                    </span>
+                                </td>
+                                <td className="py-3 px-1">
+                                    <span className={`px-1 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${r.pattern.includes("FRESH")
                                         ? "bg-red-500/20 text-red-300 border border-red-500/30"
                                         : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                                         }`}>
                                         {r.pattern.replace("FRESH SPIKE", t('fresh_spike')).replace("BASE BUILDING", t('base_building'))}
                                     </span>
                                 </td>
-                                <td className="py-3 px-2 text-right font-mono text-green-400">{r.volume_ratio}x</td>
-                                <td className="py-3 px-2 text-right font-mono text-red-400">{r.drop_pct}%</td>
-                                <td className="py-3 px-2 text-right text-gray-300 font-mono">{r.market_cap}</td>
-                                <td className="py-3 px-2 text-right text-yellow-500 font-mono">{r.insider_own}</td>
+                                <td className="py-3 px-1 text-right font-mono text-green-400 text-xs">{r.volume_ratio}x</td>
+                                <td className="py-3 px-1 text-right font-mono text-red-400 text-xs">{r.drop_pct}%</td>
+                                <td className="py-3 px-1 text-right text-gray-300 font-mono text-xs">{r.market_cap}</td>
+                                <td className="py-3 px-1 text-right text-yellow-500 font-mono text-xs">{r.insider_own}</td>
                             </tr>
                         ))}
                     </tbody>

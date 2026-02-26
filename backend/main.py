@@ -42,6 +42,10 @@ class ScanConfig(BaseModel):
     use_jpx: bool = False
     custom_tickers: List[str] = []
 
+class ToggleCheckedRequest(BaseModel):
+    ticker: str
+    checked: bool
+
 SCAN_PROCESS = None
 STATUS_FILE = "scan_status.json"
 CONFIG_FILE = "scan_config.json"
@@ -138,6 +142,34 @@ def get_status():
         
     return LAST_KNOWN_STATUS
 
+@app.post("/api/results/toggle-checked")
+def toggle_checked(req: ToggleCheckedRequest):
+    global LAST_KNOWN_STATUS
+    
+    # Update in memory
+    results = LAST_KNOWN_STATUS.get("results", [])
+    found = False
+    for r in results:
+        if r['ticker'] == req.ticker:
+            r['checked'] = req.checked
+            found = True
+            break
+    
+    if found:
+        # Persist to file
+        if os.path.exists(STATUS_FILE):
+            try:
+                # Use a lock-like pattern by writing to temp and renaming if we were in the worker, 
+                # but here we just overwrite for simplicity since it's user interaction.
+                # However, to be safe against the worker's atomic writes:
+                with open(STATUS_FILE, 'w') as f:
+                    json.dump(LAST_KNOWN_STATUS, f)
+            except:
+                pass
+        return {"status": "updated"}
+    
+    return {"status": "not_found"}
+
 @app.get("/api/export")
 def export_results():
     results = []
@@ -160,7 +192,7 @@ def export_results():
     output = io.StringIO()
     writer = csv.writer(output)
     
-    headers = ["Ticker", "Pattern", "Volume Ratio", "Drop %", "Market Cap", "Insider Own %"]
+    headers = ["Ticker", "Pattern", "Volume Ratio", "Drop %", "Market Cap", "Insider Own %", "Market", "Checked"]
     writer.writerow(headers)
     
     for r in results:
@@ -170,7 +202,9 @@ def export_results():
             r['volume_ratio'],
             r['drop_pct'],
             r['market_cap'],
-            r['insider_own']
+            r['insider_own'],
+            r.get('market', 'Unknown'),
+            r.get('checked', False)
         ])
         
     output.seek(0)

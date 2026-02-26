@@ -133,6 +133,24 @@ const Dashboard = () => {
         }
     };
 
+    const handleToggleChecked = async (ticker, checked) => {
+        // Optimistic update
+        setStatus(prev => ({
+            ...prev,
+            results: prev.results.map(r => r.ticker === ticker ? { ...r, checked } : r)
+        }));
+
+        try {
+            await fetch(`${API_BASE}/results/toggle-checked`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ticker, checked })
+            });
+        } catch (e) {
+            console.error("Failed to toggle checked:", e);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gray-900 text-gray-100 font-sans selection:bg-blue-500 selection:text-white">
             {/* Ticker Check Modal */}
@@ -504,6 +522,7 @@ const Dashboard = () => {
                     </div>
                     <ResultsTable
                         results={status.results}
+                        onToggleChecked={handleToggleChecked}
                         onImport={(importedResults) => {
                             setStatus(prev => ({
                                 ...prev,
